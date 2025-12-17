@@ -1,6 +1,6 @@
-const crypto = require('crypto');
-const { supabase } = require('./supabaseClient');
-const meta = require('./metaWhatsapp');
+import crypto from 'crypto';
+import { supabase } from './supabaseClient.js';
+import meta from './metaWhatsapp.js';
 
 /**
  * Verifies the signature of the incoming Monnify webhook.
@@ -84,4 +84,4 @@ async function handleMonnifyWebhook(req, res) {
   res.sendStatus(200); // Acknowledge receipt for all events
 }
 
-module.exports = handleMonnifyWebhook;
+export default handleMonnifyWebhook;

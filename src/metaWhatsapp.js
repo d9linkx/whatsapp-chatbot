@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 const TOKEN = process.env.META_WHATSAPP_TOKEN; // Page access token
 const PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID; // phone number id from Meta
@@ -93,4 +93,4 @@ async function sendList(toPhone, headerTitle, bodyText, buttonText, sections /* 
   return sendRaw(payload);
 }
 
-module.exports = { sendText, sendButtons, sendList };
+export default { sendText, sendButtons, sendList };

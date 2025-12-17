@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 const MONNIFY_API_KEY = process.env.MONNIFY_API_KEY;
 const MONNIFY_SECRET_KEY = process.env.MONNIFY_SECRET_KEY;
@@ -47,4 +47,4 @@ async function createPaymentLink({ amount, customerName, customerEmail, customer
   return { paymentUrl: json.response.paymentUrl, reference: json.response.transactionReference };
 }
 
-module.exports = { createPaymentLink };
+export { createPaymentLink };

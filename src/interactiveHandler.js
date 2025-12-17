@@ -1,6 +1,7 @@
-const { supabase } = require('./supabaseClient');
-const meta = require('./metaWhatsapp');
-const { createPaymentLink } = require('./monnifyClient');
+import { supabase } from './supabaseClient.js';
+import meta from './metaWhatsapp.js';
+import handleTextMessage from './textHandler.js';
+import { createPaymentLink } from './monnifyClient.js';
 
 /**
  * Fetches a provider by ID and handles the case where the provider is not found.
@@ -23,13 +24,27 @@ async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
   const { data: categories } = await supabase.rpc('distinct_service_categories');
   const cats = (categories || []).map(c => ({ id: `cat_${c}`, label: c }));
-
+ 
   session.stage = 'awaiting_category';
   await saveSession(session);
-
-  const sections = [{ title: 'Service categories', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }];
+ 
+  const introText = `Awesome! To help you find exactly what you need, here are some popular service categories available across Nigeria. If you don't see what you're looking for, no worries, you can always type it in!`;
+  const sections = [{ title: 'Popular Categories', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }];
   sections[0].rows.push({ id: 'category:manual', title: 'Type it in the chat' });
-  await meta.sendList(waPhone, `Hi ${name}`, 'Choose a service category or type the service you want.', 'Choose category', sections);
+  await meta.sendList(waPhone, 'Find a Service', introText, 'Choose a category', sections);
+}
+
+async function handleBuyItem(context) {
+  const { waPhone, saveSession } = context;
+  await saveSession({ stage: 'buy_item_start' });
+  // TODO: Implement the "Buy an item" flow.
+  await meta.sendText(waPhone, "This feature is coming soon! For now, you can find a service or ask a question.");
+}
+
+async function handleAskQuestion(context) {
+  const { waPhone, saveSession } = context;
+  await saveSession({ stage: 'ask_question_start' });
+  await meta.sendText(waPhone, "Of course, what would you like to know? Just type your question.");
 }
 
 async function handleViewTransactions(context) {
@@ -105,44 +120,26 @@ async function handleViewProvider(providerId, context) {
 
 async function handleListReply(selectedId, context) {
   const { waPhone, session, saveSession } = context;
+  let userResponse;
 
   if (selectedId.startsWith('category:')) {
-    const category = selectedId.split(':')[1];
-    await saveSession({ stage: 'awaiting_service', category });
-    await meta.sendText(waPhone, `You picked *${category}*. Please type the service you want or choose from the list.`);
-
-    const { data: services } = await supabase.from('services').select('id,name,description').ilike('category', `%${category}%`).limit(10);
-    if (services && services.length) {
-      const rows = [{ title: 'Suggested services', rows: services.map(s => ({ id: `service:${s.id}`, title: s.name, description: s.description })) }];
-      await meta.sendList(waPhone, `Services in ${category}`, 'Choose a service or type your own.', 'Choose service', rows);
-    }
+    const category = selectedId.substring('category:'.length);
+    userResponse = `I'm interested in the "${category}" category.`;
+  } else if (selectedId.startsWith('service:')) {
+    const serviceName = selectedId.substring('service:'.length);
+    userResponse = `I'd like to request the service: "${serviceName}".`;
   }
 
-  if (selectedId.startsWith('state:')) {
-    const state = selectedId.split(':')[1];
-    const service = session.serviceQuery;
-    if (!service) {
-      await meta.sendText(waPhone, 'I did not find which service you want. Please type the service name.');
-      return;
-    }
-
-    const { data: providers } = await supabase.from('providers').select('*').ilike('services', `%${service}%`).ilike('state', `%${state}%`).limit(20);
-    if (!providers || !providers.length) {
-      await meta.sendText(waPhone, `No providers found for ${service} in ${state}.`);
-      return;
-    }
-
-    for (const p of providers) {
-      const body = `*${p.business_name}*\nPrice: ${p.price || 'N/A'}\nServices: ${p.services || ''}\nTiming: ${p.timing || 'N/A'}`;
-      await meta.sendButtons(waPhone, body, [{ id: `select_provider:${p.id}`, label: 'Select & Pay' }, { id: `view_provider:${p.id}`, label: 'More details' }]);
-    }
-    session.state = state;
-    await saveSession(session);
+  if (userResponse) {
+    // Pass the constructed user response to the text handler to be processed by the AI
+    await handleTextMessage(userResponse, context);
   }
 }
 
 const buttonHandlers = {
-  'request_service': handleRequestService,
+  'find_service': handleRequestService,
+  'buy_item': handleBuyItem,
+  'ask_question': handleAskQuestion,
   'transactions': handleViewTransactions,
 };
 
@@ -167,4 +164,4 @@ async function handleInteractiveMessage(interactive, context) {
   }
 }
 
-module.exports = handleInteractiveMessage;
+export default handleInteractiveMessage;

@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -27,39 +27,42 @@ async function callOpenAI(messages) {
  * generateReply: produce a friendly, conversational reply.
  * Returns { text, buttons } where buttons is optional array [{id,label}]
  */
-async function generateReply({ phone, userName, incomingText, session }) {
+async function generateReply({ phone, userName, history, session, isNewConversationSegment }) {
+  const incomingText = history[history.length - 1].content;
+
   // If no API key, return a gentle fallback reply with suggestions
   if (!OPENAI_API_KEY) {
     const text = `Hey ${userName || 'friend'} — I got your message: "${incomingText}". I'm here to help. Would you like to browse services or ask me something?`;
     return { text, buttons: [ { id: 'browse_services', label: 'Browse services' }, { id: 'ask_question', label: 'Ask me anything' } ] };
   }
 
-  // Construct a helpful system prompt that keeps the assistant friendly and nudges toward relevant services
-  const system = `You are Helpa, a world-class conversational AI for a marketplace called YourHelpa.
-Your personality is friendly, human, and extremely helpful.
+  const systemPrompt = `You are Helpa, a super friendly and smart AI assistant for the "YourHelpa" marketplace. Your voice is informal, warm, and always helpful. Think of yourself as a friendly guide, not a robot. The user's name is ${userName || 'friend'}.
 
-RULES:
-1.  **Greeting:** If the user starts with a greeting (like "hi", "hello"), respond with a warm welcome to YourHelpa, ask how you can help, and ALWAYS show the three main action buttons.
-2.  **General Questions & Pivot:** If the user asks a general question (e.g., "what is the capital of France?"), first answer it accurately. Then, immediately and smoothly pivot the conversation back to the marketplace's purpose. For example: "The capital of France is Paris! By the way, if you need help finding any services or items, I'm here to assist." After pivoting, ALWAYS show the three main action buttons.
-3.  **Service Intent:** If the user's intent is clearly to use a service (e.g., "I need a plumber"), start the process by asking a clarifying question (e.g., "Sure, I can help with that. What is your location?"). DO NOT show buttons in this case.
-4.  **Concise:** Keep all your text responses concise and conversational (2-3 sentences max).`;
+Here's how you should chat with users:
 
-  const userMsg = `The user (${userName || 'new user'}) sent this message: "${incomingText}". Follow the rules in the system prompt to generate the perfect response.`;
+- **Greeting**: Only greet the user if this is the start of a new conversation (isNewConversationSegment is true). Otherwise, get straight to the point.
+- **Keep it simple and clear**: Use easy-to-understand words. Avoid jargon and long sentences. Get straight to the point in a friendly way (2-3 sentences is perfect).
+- **Be a helpful guide**: Your main job is to help people find a service, buy something, or get answers.
+- **Handle specific requests**: If someone says "I need a plumber" or "I want to buy a phone," ask simple follow-up questions to get the details you need, like "Sure thing! To find the best person for the job, where are you located?". When you're in the middle of a task like this, don't show the main menu buttons.
+- **Handle general questions**: If someone asks a random question (like "what's the weather like?"), give them the answer, then gently guide them back to what you can do for them. For example: "It's sunny right now! Speaking of which, is there a service I can help you find today?".
+- **Use their name**: Casually use the user's name to keep the chat personal.
+- **Button Logic**: The system will automatically show the main menu buttons if you end your message with a general question like "How can I help?", "What can I do for you?", or "Let me know what you need!".`;
+
+  const messages = [
+    { role: 'system', content: `${systemPrompt}\n\n(isNewConversationSegment: ${isNewConversationSegment})` },
+    ...history, // Add the entire conversation history
+  ];
 
   try {
-    const aiText = await callOpenAI([
-      { role: 'system', content: system },
-      { role: 'user', content: userMsg },
-    ]);
+    const aiText = await callOpenAI(messages);
 
     const buttons = [
       { id: 'find_service', label: 'Find a service' },
       { id: 'buy_item', label: 'Buy an item' },
       { id: 'ask_question', label: 'Ask a question' },
     ];
-
-    // Per the rules, show buttons after a greeting or a pivot from a general question.
-    const showButtons = /how can i help|what can i do for you|how can i assist|i'm here to assist|let me know/i.test(aiText);
+    // Heuristic to decide when to show main menu buttons.
+    const showButtons = /how can i help|what can i do for you|how can i assist|i'm here to assist|let me know/i.test(aiText || '');
 
     return {
       text: aiText || "Welcome to YourHelpa! How can I assist you today?",
@@ -71,4 +74,4 @@ RULES:
   }
 }
 
-module.exports = { generateReply };
+export { generateReply };

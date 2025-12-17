@@ -1,39 +1,34 @@
-const request = require('supertest');
-const app = require('../src/index');
-const { supabase } = require('../src/supabaseClient');
-const handleNewUser = require('../src/newUserHandler');
-const handleTextMessage = require('../src/textHandler');
-const handleInteractiveMessage = require('../src/interactiveHandler');
-const { showMainMenu } = require('../src/menuHandler');
+import request from 'supertest';
+import app from '../src/index.js';
+import { supabase } from '../src/supabaseClient.js';
+import handleNewUser from './newUserHandler.js';
+import handleTextMessage from './textHandler.js';
+import handleInteractiveMessage from './interactiveHandler.js';
 
 // Mock dependencies to isolate our tests
-jest.mock('../supabaseClient', () => ({
+jest.mock('../src/supabaseClient.js', () => ({
   supabase: {
     from: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn(),
-    upsert: jest.fn().mockReturnThis(),
-    onConflict: jest.fn(),
+    upsert: jest.fn(),
   },
 }));
 
 // Mock the handlers so we can verify they are called correctly
-jest.mock('../src/newUserHandler');
-jest.mock('../src/textHandler');
-jest.mock('../src/interactiveHandler');
-jest.mock('../src/menuHandler');
+jest.mock('./newUserHandler.js');
+jest.mock('./textHandler.js', () => jest.fn());
+jest.mock('./interactiveHandler.js', () => jest.fn());
 
 describe('Chatbot Webhook', () => {
   beforeEach(() => {
     // Clear all mocks before each test to ensure a clean state
     jest.clearAllMocks();
     // Reset mock implementations to avoid side-effects between tests
-    supabase.from.mockClear();
   });
 
-  // Test 1: Health Check
   it('GET / should return a 200 status and a running message', async () => {
     const res = await request(app).get('/');
     expect(res.statusCode).toEqual(200);
@@ -97,7 +92,7 @@ describe('Chatbot Webhook', () => {
       expect(res.statusCode).toEqual(200);
       expect(supabase.from).toHaveBeenCalledWith('users');
       expect(handleNewUser).toHaveBeenCalledTimes(1);
-      expect(handleNewUser).toHaveBeenCalledWith('Hello', expect.any(Object));
+      expect(handleNewUser).toHaveBeenCalledWith(expect.any(Object), 'Hello');
     });
   });
 

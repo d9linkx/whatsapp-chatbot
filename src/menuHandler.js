@@ -1,4 +1,4 @@
-const meta = require('./metaWhatsapp');
+import meta from './metaWhatsapp.js';
 
 /**
  * Displays the main menu to the user with interactive buttons.
@@ -23,4 +23,4 @@ async function showMainMenu(context, headerText) {
   await meta.sendButtons(waPhone, text, buttons);
 }
 
-module.exports = { showMainMenu };
+export { showMainMenu };

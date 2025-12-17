@@ -1,6 +1,6 @@
-const { supabase } = require('./supabaseClient');
-const meta = require('./metaWhatsapp');
-const { generateReply } = require('./aiAssistant');
+import { supabase } from './supabaseClient.js';
+import meta from './metaWhatsapp.js';
+import handleTextMessage from './textHandler.js';
 
 /**
  * Silently creates a new user record when they message for the first time.
@@ -28,25 +28,8 @@ async function handleNewUser(context, textBody) {
   context.userData = newUser;
   context.name = null; // Name is not known yet
 
-  // Now that the user exists, proceed with the standard text handling
-  try {
-    const aiResponse = await generateReply({
-      phone: context.cleanPhone,
-      userName: context.name,
-      incomingText: textBody,
-      session: context.session,
-    });
-
-    if (aiResponse.buttons && aiResponse.buttons.length > 0) {
-      await meta.sendButtons(context.waPhone, aiResponse.text, aiResponse.buttons);
-    } else {
-      await meta.sendText(context.waPhone, aiResponse.text);
-    }
-  } catch (error) {
-    console.error('Error generating AI reply for new user:', error);
-    // Fallback message if the AI assistant fails
-    await meta.sendText(context.waPhone, `Welcome! I'm having a little trouble right now, but I'm here to help. Please try again in a moment.`);
-  }
+  // Now that the user exists, pass control to the standard text message handler.
+  await handleTextMessage(textBody, context);
 }
 
-module.exports = handleNewUser;
+export default handleNewUser;

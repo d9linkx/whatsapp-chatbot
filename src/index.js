@@ -1,22 +1,40 @@
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const crypto = require('crypto');
-const { supabase } = require('./supabaseClient');
-const meta = require('./metaWhatsapp');
-const handleInteractiveMessage = require('./interactiveHandler');
-const handleNewUser = require('./newUserHandler');
-const { generateReply } = require('./aiAssistant');
-const handleMonnifyWebhook = require('./monnifyWebhookHandler');
-const { showMainMenu } = require('./menuHandler');
+import 'dotenv/config';
+import express from 'express';
+import crypto from 'crypto';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { supabase } from './supabaseClient.js';
+import meta from './metaWhatsapp.js';
+import handleInteractiveMessage from './interactiveHandler.js';
+import handleTextMessage from './textHandler.js'; // New import for text handling
+import handleNewUser from './newUserHandler.js';
+import handleMonnifyWebhook from './monnifyWebhookHandler.js';
 
 const app = express();
-// Capture raw body for signature verification
-app.use(bodyParser.urlencoded({ extended: false, verify: (req, res, buf) => { req.rawBody = buf.toString(); } }));
-app.use(bodyParser.json({ verify: (req, res, buf) => { req.rawBody = buf.toString(); } }));
-
 const PORT = process.env.PORT || 3000;
-// Using Meta WhatsApp Cloud API via src/metaWhatsapp.js
+
+// --- Security Middleware ---
+
+// Set security-related HTTP response headers
+app.use(helmet());
+
+// Rate limiting to prevent brute-force attacks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// --- Body Parsers ---
+
+// Use express.json() with a verify function to capture the raw body
+// This is needed for webhook signature verification
+app.use(express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
+app.use(express.urlencoded({ extended: false })); // For URL-encoded bodies if needed
 
 // Health check
 app.get('/', (req, res) => res.send('WhatsApp chatbot webhook running'));
@@ -50,7 +68,7 @@ function verifyMetaSignature(req, res, next) {
     return res.sendStatus(401);
   }
 
-  const hmac = crypto.createHmac('sha256', appSecret).update(req.rawBody || '').digest('hex');
+  const hmac = crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
   const expectedSignature = `sha256=${hmac}`;
 
   const sigBuf = Buffer.from(signature);
@@ -68,6 +86,8 @@ function verifyMetaSignature(req, res, next) {
  * Middleware to extract message, load user and session, and attach to request.
  */
 async function loadUserAndSession(req, res, next) {
+  const TEN_MINUTES_IN_MS = 10 * 60 * 1000;
+
   const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
   if (!message) {
     console.log('Received a non-message event from Meta:', JSON.stringify(req.body, null, 2));
@@ -81,12 +101,21 @@ async function loadUserAndSession(req, res, next) {
   const { data: userData } = await supabase.from('users').select('*').eq('phone', cleanPhone).limit(1).maybeSingle();
   const { data: sessionData } = await supabase.from('sessions').select('session_data').eq('phone', cleanPhone).maybeSingle();
 
+  const session = sessionData ? sessionData.session_data : { stage: 'start' };
+  const lastInteraction = session.lastInteraction || 0;
+  const isNewConversationSegment = (Date.now() - lastInteraction) > TEN_MINUTES_IN_MS;
+
   req.userData = userData;
-  req.session = sessionData ? sessionData.session_data : { stage: 'start' };
+  req.session = session;
   req.waPhone = waPhone;
   req.cleanPhone = cleanPhone;
+  req.isNewConversationSegment = isNewConversationSegment;
+
   req.saveSession = async (newSessionState) => {
-    await supabase.from('sessions').upsert({ phone: cleanPhone, session_data: newSessionState }, { onConflict: 'phone' });
+    // Always update the last interaction time on save
+    const updatedSession = { ...newSessionState, lastInteraction: Date.now() };
+    await supabase.from('sessions').upsert({ phone: cleanPhone, session_data: updatedSession }, { onConflict: 'phone' });
+    req.session = updatedSession; // Keep req.session in sync
   };
 
   next();
@@ -95,9 +124,9 @@ async function loadUserAndSession(req, res, next) {
 // Incoming webhook endpoint
 app.post('/webhook', verifyMetaSignature, loadUserAndSession, async (req, res, next) => {
   try {
-    const { message, userData, session, saveSession, waPhone, cleanPhone } = req;
+    const { message, userData, session, saveSession, waPhone, cleanPhone, isNewConversationSegment } = req;
     const name = userData?.full_name;
-    const context = { waPhone, name, userData, session, saveSession, cleanPhone };
+    const context = { waPhone, name, userData, session, saveSession, cleanPhone, isNewConversationSegment };
 
     const textBody = (message.text?.body || '').trim();
     const interactive = message.interactive;
@@ -109,26 +138,7 @@ app.post('/webhook', verifyMetaSignature, loadUserAndSession, async (req, res, n
       await handleInteractiveMessage(interactive, context);
     } else if (textBody) {
       // For any text message, use the AI assistant to generate a conversational reply.
-      try {
-        const aiResponse = await generateReply({
-          phone: cleanPhone,
-          userName: name,
-          incomingText: textBody,
-          session: session,
-        });
-
-        if (aiResponse.buttons && aiResponse.buttons.length > 0) {
-          await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
-        } else {
-          await meta.sendText(waPhone, aiResponse.text);
-        }
-      } catch (error) {
-        console.error('Error generating AI reply:', error);
-        // Fallback message if the AI assistant fails
-        await meta.sendText(waPhone, `Sorry, I'm having a little trouble right now. Please try again in a moment.`);
-      }
-    } else {
-      await showMainMenu(context, `Hi ${name}, I didn't quite get that. What would you like to do?`);
+      await handleTextMessage(textBody, context);
     }
 
     res.sendStatus(200);
@@ -152,4 +162,4 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // Export the app for testing
-module.exports = app;
+export default app;
