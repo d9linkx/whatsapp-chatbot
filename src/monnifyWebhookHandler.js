@@ -59,11 +59,28 @@ async function handleSuccessfulTransaction(eventData) {
     },
   });
 
-  // Notify user of success
-  await meta.sendText(`+${cleanPhone}`, '✅ Your payment was successful! We have confirmed your booking.');
+  let providerName = 'The Helpa';
+  let providerPhone = 'N/A';
+  
+  // Notify the Helpa (Provider)
+  try {
+    const { data: provider } = await supabase.from('helpa').select('*').eq('id', session.provider_id).single();
+    if (provider) {
+      providerName = provider.name;
+      providerPhone = provider.phone;
+      if (provider.phone) {
+        await meta.sendText(provider.phone, `🔔 New Booking Alert!\n\nUser: ${userData.full_name}\nService: ${session.serviceName}\nAmount Paid: ₦${amountPaid}\n\nPlease contact the customer at +${cleanPhone} to arrange delivery.`);
+      }
+    }
+  } catch (err) {
+    console.error('Error notifying provider:', err);
+  }
 
-  // Reset the user's session to the main menu
-  await supabase.from('sessions').upsert({ phone: cleanPhone, session_data: { stage: 'menu' } }, { onConflict: 'phone' });
+  // Notify user of success with Escrow and Contact details
+  await meta.sendText(`+${cleanPhone}`, `✅ Payment Successful!\n\nYour payment of ₦${amountPaid} has been securely locked in *Escrow*.\n\nWe have notified *${providerName}* about your request.\n\n📞 *Helpa Contact*: ${providerPhone}\n\nPlease contact them to arrange the service. We will hold the money until you confirm the service is done.`);
+
+  // Update session to transaction_ongoing so the AI knows to ask for updates later
+  await supabase.from('sessions').upsert({ phone: cleanPhone, session_data: { stage: 'transaction_ongoing', transaction_ref: paymentReference, provider_name: providerName } }, { onConflict: 'phone' });
 }
 
 /**

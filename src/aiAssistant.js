@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { supabase } from './supabaseClient.js';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -23,6 +24,23 @@ async function callOpenAI(messages) {
   return choice ? (choice.message && choice.message.content) : null;
 }
 
+async function findHelpaProviders(text) {
+  if (!text) return [];
+  const stopWords = ['i', 'need', 'want', 'looking', 'for', 'a', 'an', 'the', 'please', 'help', 'me', 'find', 'buy', 'get', 'service', 'provider', 'seller'];
+  const keywords = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => !stopWords.includes(w) && w.length > 2);
+  
+  if (keywords.length === 0) return [];
+  const term = keywords[0];
+
+  const { data } = await supabase
+    .from('helpa')
+    .select('*')
+    .or(`name.ilike.%${term}%,description.ilike.%${term}%`)
+    .limit(3);
+
+  return data || [];
+}
+
 /**
  * generateReply: produce a friendly, conversational reply.
  * Returns { text, buttons } where buttons is optional array [{id,label}]
@@ -34,6 +52,24 @@ async function generateReply({ phone, userName, history, session, isNewConversat
   if (!OPENAI_API_KEY) {
     const text = `Hey ${userName || 'friend'} — I got your message: "${incomingText}". I'm here to help. Would you like to browse services or ask me something?`;
     return { text, buttons: [ { id: 'browse_services', label: 'Browse services' }, { id: 'ask_question', label: 'Ask me anything' } ] };
+  }
+
+  let providerContext = '';
+  let foundProviders = [];
+  try {
+    const providers = await findHelpaProviders(incomingText);
+    if (providers.length > 0) {
+      foundProviders = providers;
+      providerContext = `\n\n[Available Providers from Database]:\n${providers.map(p => `- ${p.name}: ${p.description} (Price: ${p.price || 'Contact for price'})`).join('\n')}\n\nIf the user is asking for a service or product, ONLY recommend the providers listed above.`;
+    }
+  } catch (err) {
+    console.error('Error fetching helpa providers:', err);
+  }
+
+  // Special handling for ongoing transactions
+  let transactionContext = '';
+  if (session.stage === 'transaction_ongoing') {
+    transactionContext = `\n\n[Ongoing Transaction]: The user has an active transaction with ${session.provider_name || 'a Helpa'}. The payment is in escrow. Ask the user for an update on how the service is going.`;
   }
 
   const systemPrompt = `You are Helpa, a super friendly and smart AI assistant for the "YourHelpa" marketplace. Your voice is informal, warm, and always helpful. Think of yourself as a friendly guide, not a robot. The user's name is ${userName || 'friend'}.
@@ -49,24 +85,32 @@ Here's how you should chat with users:
 - **Button Logic**: The system will automatically show the main menu buttons if you end your message with a general question like "How can I help?", "What can I do for you?", or "Let me know what you need!".`;
 
   const messages = [
-    { role: 'system', content: `${systemPrompt}\n\n(isNewConversationSegment: ${isNewConversationSegment})` },
+    { role: 'system', content: `${systemPrompt}\n${providerContext}${transactionContext}\n\n(isNewConversationSegment: ${isNewConversationSegment})` },
     ...history, // Add the entire conversation history
   ];
 
   try {
     const aiText = await callOpenAI(messages);
 
-    const buttons = [
-      { id: 'find_service', label: 'Find a service' },
-      { id: 'buy_item', label: 'Buy an item' },
-      { id: 'ask_question', label: 'Ask a question' },
-    ];
-    // Heuristic to decide when to show main menu buttons.
-    const showButtons = /how can i help|what can i do for you|how can i assist|i'm here to assist|let me know/i.test(aiText || '');
+    let buttons = [];
+    
+    if (session.stage === 'transaction_ongoing') {
+      // If transaction is ongoing, provide options to confirm or appeal
+      buttons = [ { id: 'confirm_transaction', label: 'Confirm Service' }, { id: 'appeal_transaction', label: 'Appeal' } ];
+    } else if (foundProviders.length > 0) {
+      // If providers were found, offer buttons to book them immediately
+      buttons = foundProviders.slice(0, 3).map(p => ({ id: `select_provider:${p.id}`, label: `Book ${p.name}`.substring(0, 20) }));
+    } else {
+      // Otherwise, check if we should show the main menu
+      const showButtons = /how can i help|what can i do for you|how can i assist|i'm here to assist|let me know/i.test(aiText || '');
+      if (showButtons) {
+        buttons = [ { id: 'find_service', label: 'Find a service' }, { id: 'buy_item', label: 'Buy an item' }, { id: 'ask_question', label: 'Ask a question' } ];
+      }
+    }
 
     return {
       text: aiText || "Welcome to YourHelpa! How can I assist you today?",
-      buttons: showButtons ? buttons : [],
+      buttons: buttons,
     };
   } catch (e) {
     console.error('aiAssistant error:', e && e.message);

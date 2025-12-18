@@ -10,7 +10,7 @@ import { createPaymentLink } from './monnifyClient.js';
  * @returns {object|null} The provider data or null if not found.
  */
 async function getProviderById(providerId, context) {
-  const { data: provider, error } = await supabase.from('providers').select('*').eq('id', providerId).single();
+  const { data: provider, error } = await supabase.from('helpa').select('*').eq('id', providerId).single();
 
   if (error || !provider) {
     console.error('Error fetching provider:', error);
@@ -85,7 +85,7 @@ async function handleSelectProvider(providerId, context) {
   const price = provider.price;
 
   if (!price || isNaN(parseFloat(price))) {
-    await meta.sendText(waPhone, `*${provider.business_name}* has been notified. They will contact you shortly to discuss pricing.`);
+    await meta.sendText(waPhone, `*${provider.name}* has been notified. They will contact you shortly to discuss pricing.`);
     await saveSession({ stage: 'menu' });
     return;
   }
@@ -94,11 +94,11 @@ async function handleSelectProvider(providerId, context) {
     amount: price,
     customerName: userData.full_name,
     customerEmail: userData.email || `${cleanPhone}@chatapp.com`,
-    paymentDescription: `Payment for ${serviceName} by ${provider.business_name}`,
+    paymentDescription: `Payment for ${serviceName} by ${provider.name}`,
   };
   const { paymentUrl, reference } = await createPaymentLink(paymentDetails);
 
-  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.business_name}* for *₦${price}*, please complete the payment below.`);
+  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.name}* for *₦${price}*, please complete the payment below.`);
   await meta.sendText(waPhone, paymentUrl);
 
   session.stage = 'awaiting_payment';
@@ -114,7 +114,7 @@ async function handleViewProvider(providerId, context) {
   const provider = await getProviderById(providerId, context);
   if (!provider) return;
 
-  let detailsMessage = `*More Details for ${provider.business_name}*\n\n*Services:* ${provider.services || 'N/A'}\n*Typical Availability:* ${provider.timing || 'N/A'}\n\n${provider.description || 'No additional details available.'}`;
+  let detailsMessage = `*More Details for ${provider.name}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
   await meta.sendText(waPhone, detailsMessage);
 }
 
@@ -136,11 +136,26 @@ async function handleListReply(selectedId, context) {
   }
 }
 
+async function handleTransactionAction(context, type) {
+  const { waPhone, saveSession, userData } = context;
+  // Generate a 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // In a real app, send this via email provider. Here we simulate/log it.
+  console.log(`[EMAIL SERVICE] Sending ${type} code ${code} to ${userData.email || 'user email'}`);
+  
+  await meta.sendText(waPhone, `To verify this action, we've sent a confirmation code to your registered email.\n\nPlease enter the 6-digit code here.`);
+  
+  await saveSession({ ...context.session, stage: 'awaiting_confirmation_code', confirmationCode: code, confirmationType: type });
+}
+
 const buttonHandlers = {
   'find_service': handleRequestService,
   'buy_item': handleBuyItem,
   'ask_question': handleAskQuestion,
   'transactions': handleViewTransactions,
+  'confirm_transaction': (ctx) => handleTransactionAction(ctx, 'confirm'),
+  'appeal_transaction': (ctx) => handleTransactionAction(ctx, 'appeal'),
 };
 
 const dynamicButtonHandlers = [
