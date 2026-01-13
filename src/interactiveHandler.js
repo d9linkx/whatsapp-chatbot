@@ -20,17 +20,43 @@ async function getProviderById(providerId, context) {
   return provider;
 }
 
+async function handleViewAllServices(context) {
+  const { waPhone } = context;
+  const { data: services, error } = await supabase
+    .from('services')
+    .select('name, description')
+    .limit(10);
+
+  if (error || !services || services.length === 0) {
+    console.error('Error fetching services:', error);
+    await meta.sendText(waPhone, 'Sorry, I could not fetch the services list at the moment.');
+    return;
+  }
+
+  const sections = [{
+    title: 'Available Services',
+    rows: services.map(s => ({ id: `service:${s.name}`, title: s.name, description: s.description ? s.description.substring(0, 60) : '' }))
+  }];
+
+  await meta.sendList(waPhone, 'All Services', 'Here are the services available on YourHelpa:', 'Select a service', sections);
+}
+
 async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
   const { data: categories } = await supabase.rpc('distinct_service_categories');
-  const cats = (categories || []).map(c => ({ id: `cat_${c}`, label: c }));
+  // Limit categories to 5 to ensure we don't exceed WhatsApp list limits (10 rows total)
+  const cats = (categories || []).slice(0, 5).map(c => ({ id: `cat_${c}`, label: c }));
  
   session.stage = 'awaiting_category';
   await saveSession(session);
  
   const introText = `Awesome! To help you find exactly what you need, here are some popular services available across Nigeria. If you don't see what you're looking for, no worries, you can always type it in!`;
-  const sections = [{ title: 'Popular Services', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }];
-  sections[0].rows.push({ id: 'category:manual', title: 'Type it in the chat' });
+  const sections = [
+    { title: 'Browse', rows: [{ id: 'option:all_services', title: 'All Available Services', description: 'View full list' }] },
+    { title: 'Popular Services', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }
+  ];
+
+  sections[1].rows.push({ id: 'category:manual', title: 'Type it in the chat' });
 
   sections.push({
     title: 'Help & Support',
@@ -137,6 +163,9 @@ async function handleListReply(selectedId, context) {
   } else if (selectedId.startsWith('service:')) {
     const serviceName = selectedId.substring('service:'.length);
     userResponse = `I'd like to request the service: "${serviceName}".`;
+  } else if (selectedId === 'option:all_services') {
+    await handleViewAllServices(context);
+    return;
   } else if (selectedId === 'option:faq') {
     userResponse = 'I have some questions. Can you show me the FAQs?';
   } else if (selectedId === 'option:contact_support') {
