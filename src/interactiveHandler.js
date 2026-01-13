@@ -20,6 +20,38 @@ async function getProviderById(providerId, context) {
   return provider;
 }
 
+async function handleShowProvidersForService(serviceName, context) {
+  const { waPhone } = context;
+
+  const { data: providers, error } = await supabase
+    .from('helpas')
+    .select('*')
+    .ilike('services', `%${serviceName}%`)
+    .limit(10);
+
+  if (error) {
+    console.error('Error fetching providers:', error);
+    await meta.sendText(waPhone, 'Sorry, I could not fetch providers at the moment.');
+    return;
+  }
+
+  if (!providers || providers.length === 0) {
+    await meta.sendText(waPhone, `Sorry, no Helpas found for "${serviceName}".`);
+    return;
+  }
+
+  const sections = [{
+    title: 'Available Helpas',
+    rows: providers.map(p => ({
+      id: `select_provider:${p.id}`,
+      title: p.name || p.business_name || 'Helpa',
+      description: p.description ? p.description.substring(0, 60) : ''
+    }))
+  }];
+
+  await meta.sendList(waPhone, 'Select a Helpa', `Here are the Helpas offering ${serviceName}:`, 'Choose Helpa', sections);
+}
+
 async function handleViewAllServices(context) {
   const { waPhone } = context;
   const { data: services, error } = await supabase
@@ -165,10 +197,12 @@ async function handleListReply(selectedId, context) {
 
   if (selectedId.startsWith('category:')) {
     const category = selectedId.substring('category:'.length);
-    userResponse = `I'm interested in the "${category}" category.`;
+    await handleShowProvidersForService(category, context);
+    return;
   } else if (selectedId.startsWith('service:')) {
     const serviceName = selectedId.substring('service:'.length);
-    userResponse = `I'd like to request the service: "${serviceName}".`;
+    await handleShowProvidersForService(serviceName, context);
+    return;
   } else if (selectedId === 'option:all_services') {
     await handleViewAllServices(context);
     return;
