@@ -12,6 +12,7 @@ const API_BASE = `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}`;
 async function sendRaw(payload) {
   // If dry-run mode is enabled, log instead of sending
   if (process.env.META_DRY_RUN === 'true') {
+
     console.log('metaWhatsapp (dry-run): would send payload:', JSON.stringify(payload, null, 2));
     return { dryRun: true, payload };
   }
@@ -20,6 +21,7 @@ async function sendRaw(payload) {
     console.log('metaWhatsapp: no token/phone id configured — would send:', JSON.stringify(payload, null, 2));
     return { fallback: true, payload };
   }
+
 
   const res = await fetch(`${API_BASE}/messages`, {
     method: 'POST',
@@ -32,6 +34,7 @@ async function sendRaw(payload) {
 
   const json = await res.json();
   if (!res.ok) {
+
     console.error('Meta WhatsApp API error', json);
     throw new Error(JSON.stringify(json));
   }

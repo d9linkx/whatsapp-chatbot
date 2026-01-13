@@ -45,11 +45,20 @@ app.get('/webhook', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
+  // Log the received values for debugging purposes
+  console.log('--- Incoming Webhook Verification ---');
+  console.log('mode:', mode);
+  console.log('token (received):', token);
+  console.log('challenge:', challenge);
+  console.log('verify_token (expected):', process.env.META_VERIFY_TOKEN);
+  console.log('--- End Verification ---');
+
   if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
-    console.log('Webhook verified by Meta.');
+    console.log('SUCCESS: Webhook verified by Meta.');
     return res.status(200).send(challenge);
   }
-  return res.sendStatus(403);
+  console.error('ERROR: Webhook verification failed. Token or mode mismatch.');
+  return res.status(403).send('Webhook verification failed. Token or mode mismatch.');
 });
 
 /**
@@ -141,7 +150,7 @@ app.post('/webhook', verifyMetaSignature, loadUserAndSession, async (req, res, n
       await handleTextMessage(textBody, context);
     }
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (err) {
     next(err); // Pass errors to the error handler
   }
