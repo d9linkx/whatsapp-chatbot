@@ -2,7 +2,6 @@ import { supabase } from './supabaseClient.js';
 import meta from './metaWhatsapp.js';
 import handleTextMessage from './textHandler.js';
 import { createPaymentLink } from './monnifyClient.js';
-import { handleRequestService, handleSelectCategory, showMainMenu } from './menuHandler.js';
 
 /**
  * Fetches a provider by ID and handles the case where the provider is not found.
@@ -11,14 +10,9 @@ import { handleRequestService, handleSelectCategory, showMainMenu } from './menu
  * @returns {object|null} The provider data or null if not found.
  */
 async function getProviderById(providerId, context) {
-  let { data: provider, error } = await supabase.from('helpas').select('*').eq('id', providerId).single();
+  const { data: provider, error } = await supabase.from('helpas').select('*').eq('id', providerId).single();
 
-  if (!provider) {
-    const { data: business } = await supabase.from('businesses').select('*').eq('id', providerId).single();
-    provider = business;
-  }
-
-  if (!provider) {
+  if (error || !provider) {
     console.error('Error fetching provider:', error);
     await meta.sendText(context.waPhone, 'Sorry, I had trouble finding that provider. Please try again.');
     return null;
@@ -79,6 +73,32 @@ async function handleViewAllServices(context) {
   await meta.sendList(waPhone, 'All Services', 'Here are the services available on YourHelpa:', 'Select a service', sections);
 }
 
+async function handleRequestService(context) {
+  const { waPhone, name, session, saveSession } = context;
+  const { data: categories } = await supabase.rpc('distinct_service_categories');
+  
+  // User requested interactive buttons (not a popup/list). WhatsApp allows max 3 buttons.
+  // We take the top 3 categories.
+  const cats = (categories || []).slice(0, 3);
+ 
+  session.stage = 'awaiting_category';
+  await saveSession(session);
+ 
+  const introText = `What service do you need ${name}?`;
+  
+  const buttons = cats.map(c => ({
+    id: `category:${c}`,
+    title: c
+  }));
+
+  if (buttons.length === 0) {
+    await meta.sendText(waPhone, "No services available at the moment.");
+    return;
+  }
+
+  await meta.sendButtons(waPhone, introText, buttons);
+}
+
 async function handleBuyItem(context) {
   const { waPhone, saveSession } = context;
   await saveSession({ stage: 'buy_item_start' });
@@ -128,10 +148,9 @@ async function handleSelectProvider(providerId, context) {
 
   const serviceName = session.serviceQuery || 'the requested service';
   const price = provider.price;
-  const providerName = provider.business_name || provider.name;
 
   if (!price || isNaN(parseFloat(price))) {
-    await meta.sendText(waPhone, `*${providerName}* has been notified. They will contact you shortly to discuss pricing.`);
+    await meta.sendText(waPhone, `*${provider.name}* has been notified. They will contact you shortly to discuss pricing.`);
     await saveSession({ stage: 'menu' });
     return;
   }
@@ -140,11 +159,11 @@ async function handleSelectProvider(providerId, context) {
     amount: price,
     customerName: userData.full_name,
     customerEmail: userData.email || `${cleanPhone}@chatapp.com`,
-    paymentDescription: `Payment for ${serviceName} by ${providerName}`,
+    paymentDescription: `Payment for ${serviceName} by ${provider.name}`,
   };
   const { paymentUrl, reference } = await createPaymentLink(paymentDetails);
 
-  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${providerName}* for *₦${price}*, please complete the payment below.`);
+  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.name}* for *₦${price}*, please complete the payment below.`);
   await meta.sendText(waPhone, paymentUrl);
 
   session.stage = 'awaiting_payment';
@@ -162,6 +181,16 @@ async function handleViewProvider(providerId, context) {
 
   let detailsMessage = `*More Details for ${provider.name}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
   await meta.sendText(waPhone, detailsMessage);
+}
+
+async function handleSelectCategory(categoryId, context) {
+  const { waPhone, session, saveSession } = context;
+  
+  session.category = categoryId;
+  session.stage = 'awaiting_location';
+  await saveSession(session);
+  
+  await meta.sendText(waPhone, `Where do you want this service delivered? (City in Nigeria)`);
 }
 
 async function handleListReply(selectedId, context) {
@@ -194,9 +223,6 @@ async function handleListReply(selectedId, context) {
     return;
   } else if (selectedId === 'ask_question') {
     await handleAskQuestion(context);
-    return;
-  } else if (selectedId === 'menu') {
-    await showMainMenu(context);
     return;
   }
 
@@ -243,19 +269,10 @@ async function handleButtonReply(replyId, context) {
 }
 
 async function handleInteractiveMessage(interactive, context) {
-  try {
-    if (interactive.type === 'button_reply') {
-      await handleButtonReply(interactive.button_reply.id, context);
-    } else if (interactive.type === 'list_reply') {
-      await handleListReply(interactive.list_reply.id, context);
-    }
-  } catch (error) {
-    console.error('Error handling interactive message:', error);
-    try {
-      await meta.sendText(context.waPhone, "Sorry, something went wrong. Please try again.");
-    } catch (e) {
-      console.error('Failed to send error message:', e.message);
-    }
+  if (interactive.type === 'button_reply') {
+    await handleButtonReply(interactive.button_reply.id, context);
+  } else if (interactive.type === 'list_reply') {
+    await handleListReply(interactive.list_reply.id, context);
   }
 }
 

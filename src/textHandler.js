@@ -1,7 +1,6 @@
 import { generateReply } from './aiAssistant.js'; // Import AI assistant
 import meta from './metaWhatsapp.js'; // Import meta to send messages
 import { supabase } from './supabaseClient.js';
-import { showMainMenu, handleLocationSearch } from './menuHandler.js';
 
 const MAX_HISTORY_LENGTH = 6; // Keep the last 3 user/assistant message pairs
 
@@ -13,7 +12,6 @@ const MAX_HISTORY_LENGTH = 6; // Keep the last 3 user/assistant message pairs
 async function handleTextMessage(textBody, context) {
   const { waPhone, name, session, cleanPhone, saveSession, isNewConversationSegment } = context;
 
-  try {
   // Ensure history exists and is an array
   const history = Array.isArray(session.history) ? session.history : [];
 
@@ -45,22 +43,11 @@ async function handleTextMessage(textBody, context) {
     return;
   }
 
-  // 1. Handle New Conversation Greeting & Menu
-  if (isNewConversationSegment) {
-    await showMainMenu(context, `Hello ${name || 'Friend'}! Welcome to YourHelpa.`);
-    return;
-  }
-
-  // 2. Handle Location Input for Service Search
-  if (session.stage === 'awaiting_location') {
-    await handleLocationSearch(textBody, context);
-    return;
-  }
-
   // Add user's message to history
   history.push({ role: 'user', content: textBody });
 
   // For any text message, use the AI assistant to generate a conversational reply.
+  try {
     const aiResponse = await generateReply({
       phone: cleanPhone,
       userName: name,
@@ -69,30 +56,22 @@ async function handleTextMessage(textBody, context) {
       isNewConversationSegment: isNewConversationSegment,
     });
 
-    // Add AI's response to history only if text is present
-    if (aiResponse && aiResponse.text) {
-      history.push({ role: 'assistant', content: aiResponse.text });
-    }
+    // Add AI's response to history
+    history.push({ role: 'assistant', content: aiResponse.text });
 
     // Trim history to save space and tokens
     session.history = history.slice(-MAX_HISTORY_LENGTH);
     await saveSession(session);
 
-    // Only send message if text is present (aiAssistant might have sent a list directly)
-    if (aiResponse && aiResponse.text) {
-      if (aiResponse.buttons && aiResponse.buttons.length > 0) {
-        await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
-      } else {
-        await meta.sendText(waPhone, aiResponse.text);
-      }
+    if (aiResponse.buttons && aiResponse.buttons.length > 0) {
+      await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
+    } else {
+      await meta.sendText(waPhone, aiResponse.text);
     }
   } catch (error) {
-    console.error('Error in handleTextMessage:', error);
-    try {
-      await meta.sendText(waPhone, `Sorry, I'm having a little trouble right now. Please try again in a moment.`);
-    } catch (sendError) {
-      console.error('Failed to send fallback message (likely Meta API error):', sendError.message);
-    }
+    console.error('Error generating AI reply:', error);
+    // Fallback message if the AI assistant fails
+    await meta.sendText(waPhone, `Sorry, I'm having a little trouble right now. Please try again in a moment.`);
   }
 }
 
