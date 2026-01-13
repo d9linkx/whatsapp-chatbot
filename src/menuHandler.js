@@ -31,27 +31,32 @@ async function showMainMenu(context, headerText) {
 
 async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
-  // Fetch categories from services and businesses tables
-  const { data: servicesData } = await supabase.from('services').select('category');
-  const { data: businessesData } = await supabase.from('businesses').select('category');
+  try {
+    // Fetch categories from services and businesses tables
+    const { data: servicesData } = await supabase.from('services').select('category');
+    const { data: businessesData } = await supabase.from('businesses').select('category');
 
-  const serviceCats = (servicesData || []).map(s => s.category);
-  const businessCats = (businessesData || []).map(b => b.category);
-  const uniqueCategories = [...new Set([...serviceCats, ...businessCats].filter(Boolean))];
+    const serviceCats = (servicesData || []).map(s => s.category);
+    const businessCats = (businessesData || []).map(b => b.category);
+    const uniqueCategories = [...new Set([...serviceCats, ...businessCats].filter(Boolean))];
+    
+    const cats = uniqueCategories.slice(0, 3);
   
-  const cats = uniqueCategories.slice(0, 3);
- 
-  session.stage = 'awaiting_category';
-  await saveSession(session);
- 
-  const introText = `What service do you need ${name}?`;
-  const buttons = cats.map(c => ({ id: `category:${c}`, title: c }));
+    session.stage = 'awaiting_category';
+    await saveSession(session);
+  
+    const introText = `What service do you need ${name}?`;
+    const buttons = cats.map(c => ({ id: `category:${c}`, title: c }));
 
-  if (buttons.length === 0) {
-    await meta.sendText(waPhone, "No services available at the moment.");
-    return;
+    if (buttons.length === 0) {
+      await meta.sendText(waPhone, "No services available at the moment.");
+      return;
+    }
+    await meta.sendButtons(waPhone, introText, buttons);
+  } catch (error) {
+    console.error('Error in handleRequestService:', error);
+    await meta.sendText(waPhone, "Sorry, I couldn't load the services right now.");
   }
-  await meta.sendButtons(waPhone, introText, buttons);
 }
 
 async function handleSelectCategory(categoryId, context) {
@@ -65,6 +70,12 @@ async function handleSelectCategory(categoryId, context) {
 async function handleLocationSearch(location, context) {
   const { waPhone, session } = context;
   const category = session.category;
+
+  if (!category) {
+    await meta.sendText(waPhone, "I'm not sure which service category you're looking for. Please select a service first.");
+    await handleRequestService(context);
+    return;
+  }
 
   const { data: services } = await supabase
     .from('services')
@@ -91,13 +102,17 @@ async function handleLocationSearch(location, context) {
   await meta.sendText(waPhone, `Here are the available ${category} providers in ${location}:`);
   for (const s of foundServices) {
     const provider = s.helpas;
-    const cardText = `*${provider.business_name || provider.name}*\n${s.description || s.name}\nPrice: ₦${s.price}`;
+    const desc = (s.description || s.name || '').substring(0, 100);
+    const price = s.price ? `₦${s.price}` : 'Contact for price';
+    const cardText = `*${provider.business_name || provider.name}*\n${desc}\nPrice: ${price}`;
     const buttons = [{ id: `select_provider:${provider.id}`, title: 'Select' }];
     await meta.sendButtons(waPhone, cardText, buttons);
   }
 
   for (const b of foundBusinesses) {
-    const cardText = `*${b.business_name || b.name}*\n${b.description || 'Service available'}\nPrice: ${b.price ? '₦' + b.price : 'Contact for price'}`;
+    const desc = (b.description || 'Service available').substring(0, 100);
+    const price = b.price ? `₦${b.price}` : 'Contact for price';
+    const cardText = `*${b.business_name || b.name}*\n${desc}\nPrice: ${price}`;
     const buttons = [{ id: `select_provider:${b.id}`, title: 'Select' }];
     await meta.sendButtons(waPhone, cardText, buttons);
   }

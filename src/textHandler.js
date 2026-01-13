@@ -52,7 +52,12 @@ async function handleTextMessage(textBody, context) {
 
   // 2. Handle Location Input for Service Search
   if (session.stage === 'awaiting_location') {
-    await handleLocationSearch(textBody, context);
+    try {
+      await handleLocationSearch(textBody, context);
+    } catch (error) {
+      console.error('Error in location search:', error);
+      await meta.sendText(waPhone, "Sorry, I encountered an error searching for providers. Please try again or type 'menu' to restart.");
+    }
     return;
   }
 
@@ -70,7 +75,7 @@ async function handleTextMessage(textBody, context) {
     });
 
     // Add AI's response to history only if text is present
-    if (aiResponse.text) {
+    if (aiResponse && aiResponse.text) {
       history.push({ role: 'assistant', content: aiResponse.text });
     }
 
@@ -79,7 +84,7 @@ async function handleTextMessage(textBody, context) {
     await saveSession(session);
 
     // Only send message if text is present (aiAssistant might have sent a list directly)
-    if (aiResponse.text) {
+    if (aiResponse && aiResponse.text) {
       if (aiResponse.buttons && aiResponse.buttons.length > 0) {
         await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
       } else {
