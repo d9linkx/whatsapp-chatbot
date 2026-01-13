@@ -31,9 +31,13 @@ async function showMainMenu(context, headerText) {
 
 async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
-  // Fetch categories directly from services table
+  // Fetch categories from services and businesses tables
   const { data: servicesData } = await supabase.from('services').select('category');
-  const uniqueCategories = [...new Set((servicesData || []).map(s => s.category).filter(Boolean))];
+  const { data: businessesData } = await supabase.from('businesses').select('category');
+
+  const serviceCats = (servicesData || []).map(s => s.category);
+  const businessCats = (businessesData || []).map(b => b.category);
+  const uniqueCategories = [...new Set([...serviceCats, ...businessCats].filter(Boolean))];
   
   const cats = uniqueCategories.slice(0, 3);
  
