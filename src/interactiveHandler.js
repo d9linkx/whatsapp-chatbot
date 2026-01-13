@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient.js';
 import meta from './metaWhatsapp.js';
 import handleTextMessage from './textHandler.js';
 import { createPaymentLink } from './monnifyClient.js';
+import { handleRequestService } from './menuHandler.js';
 
 /**
  * Fetches a provider by ID and handles the case where the provider is not found.
@@ -10,9 +11,14 @@ import { createPaymentLink } from './monnifyClient.js';
  * @returns {object|null} The provider data or null if not found.
  */
 async function getProviderById(providerId, context) {
-  const { data: provider, error } = await supabase.from('helpas').select('*').eq('id', providerId).single();
+  let { data: provider, error } = await supabase.from('helpas').select('*').eq('id', providerId).single();
 
-  if (error || !provider) {
+  if (!provider) {
+    const { data: business } = await supabase.from('businesses').select('*').eq('id', providerId).single();
+    provider = business;
+  }
+
+  if (!provider) {
     console.error('Error fetching provider:', error);
     await meta.sendText(context.waPhone, 'Sorry, I had trouble finding that provider. Please try again.');
     return null;
@@ -27,26 +33,38 @@ async function handleShowProvidersForService(serviceName, context) {
     .from('services')
     .select('*, helpas(business_name)')
     .ilike('name', `%${serviceName}%`)
-    .limit(10);
+    .limit(5);
 
-  if (error) {
-    console.error('Error fetching services:', error);
-    await meta.sendText(waPhone, 'Sorry, I could not fetch providers at the moment.');
-    return;
+  const { data: businesses } = await supabase
+    .from('businesses')
+    .select('*')
+    .or(`business_name.ilike.%${serviceName}%,description.ilike.%${serviceName}%`)
+    .limit(5);
+
+  const rows = [];
+  if (services) {
+    rows.push(...services.map(s => ({
+      id: `select_provider:${s.helpa_id}`,
+      title: s.helpas?.business_name || 'Helpa',
+      description: `₦${s.price} - ${s.description ? s.description.substring(0, 40) : ''}`
+    })));
+  }
+  if (businesses) {
+    rows.push(...businesses.map(b => ({
+      id: `select_provider:${b.id}`,
+      title: b.business_name || 'Business',
+      description: `₦${b.price || '?'} - ${b.description ? b.description.substring(0, 40) : ''}`
+    })));
   }
 
-  if (!services || services.length === 0) {
-    await meta.sendText(waPhone, `Sorry, no Helpas found for "${serviceName}".`);
+  if (rows.length === 0) {
+    await meta.sendText(waPhone, `Sorry, no providers found for "${serviceName}".`);
     return;
   }
 
   const sections = [{
     title: 'Available Helpas',
-    rows: services.map(s => ({
-      id: `select_provider:${s.helpa_id}`,
-      title: s.helpas?.business_name || 'Helpa',
-      description: `₦${s.price} - ${s.description ? s.description.substring(0, 40) : ''}`
-    }))
+    rows: rows.slice(0, 10)
   }];
 
   await meta.sendList(waPhone, 'Select a Helpa', `Here are the Helpas offering ${serviceName}:`, 'Choose Helpa', sections);
@@ -57,46 +75,32 @@ async function handleViewAllServices(context) {
   const { data: services, error } = await supabase
     .from('services')
     .select('name, description')
-    .limit(10);
+    .limit(5);
 
-  if (error || !services || services.length === 0) {
-    console.error('Error fetching services:', error);
+  const { data: businesses } = await supabase
+    .from('businesses')
+    .select('id, business_name, description')
+    .limit(5);
+
+  const rows = [];
+  if (services) {
+    rows.push(...services.map(s => ({ id: `service:${s.name}`, title: s.name, description: s.description ? s.description.substring(0, 60) : '' })));
+  }
+  if (businesses) {
+    rows.push(...businesses.map(b => ({ id: `select_provider:${b.id}`, title: b.business_name, description: b.description ? b.description.substring(0, 60) : '' })));
+  }
+
+  if (rows.length === 0) {
     await meta.sendText(waPhone, 'Sorry, I could not fetch the services list at the moment.');
     return;
   }
 
   const sections = [{
     title: 'Available Services',
-    rows: services.map(s => ({ id: `service:${s.name}`, title: s.name, description: s.description ? s.description.substring(0, 60) : '' }))
+    rows: rows.slice(0, 10)
   }];
 
   await meta.sendList(waPhone, 'All Services', 'Here are the services available on YourHelpa:', 'Select a service', sections);
-}
-
-async function handleRequestService(context) {
-  const { waPhone, name, session, saveSession } = context;
-  const { data: categories } = await supabase.rpc('distinct_service_categories');
-  
-  // User requested interactive buttons (not a popup/list). WhatsApp allows max 3 buttons.
-  // We take the top 3 categories.
-  const cats = (categories || []).slice(0, 3);
- 
-  session.stage = 'awaiting_category';
-  await saveSession(session);
- 
-  const introText = `What service do you need ${name}?`;
-  
-  const buttons = cats.map(c => ({
-    id: `category:${c}`,
-    title: c
-  }));
-
-  if (buttons.length === 0) {
-    await meta.sendText(waPhone, "No services available at the moment.");
-    return;
-  }
-
-  await meta.sendButtons(waPhone, introText, buttons);
 }
 
 async function handleBuyItem(context) {
@@ -148,9 +152,10 @@ async function handleSelectProvider(providerId, context) {
 
   const serviceName = session.serviceQuery || 'the requested service';
   const price = provider.price;
+  const providerName = provider.business_name || provider.name;
 
   if (!price || isNaN(parseFloat(price))) {
-    await meta.sendText(waPhone, `*${provider.name}* has been notified. They will contact you shortly to discuss pricing.`);
+    await meta.sendText(waPhone, `*${providerName}* has been notified. They will contact you shortly to discuss pricing.`);
     await saveSession({ stage: 'menu' });
     return;
   }
@@ -159,11 +164,11 @@ async function handleSelectProvider(providerId, context) {
     amount: price,
     customerName: userData.full_name,
     customerEmail: userData.email || `${cleanPhone}@chatapp.com`,
-    paymentDescription: `Payment for ${serviceName} by ${provider.name}`,
+    paymentDescription: `Payment for ${serviceName} by ${providerName}`,
   };
   const { paymentUrl, reference } = await createPaymentLink(paymentDetails);
 
-  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.name}* for *₦${price}*, please complete the payment below.`);
+  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${providerName}* for *₦${price}*, please complete the payment below.`);
   await meta.sendText(waPhone, paymentUrl);
 
   session.stage = 'awaiting_payment';
@@ -179,7 +184,8 @@ async function handleViewProvider(providerId, context) {
   const provider = await getProviderById(providerId, context);
   if (!provider) return;
 
-  let detailsMessage = `*More Details for ${provider.name}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
+  const providerName = provider.business_name || provider.name;
+  let detailsMessage = `*More Details for ${providerName}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
   await meta.sendText(waPhone, detailsMessage);
 }
 
