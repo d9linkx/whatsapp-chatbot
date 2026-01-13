@@ -157,7 +157,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server only if not in test environment
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 }
 
