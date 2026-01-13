@@ -75,11 +75,13 @@ async function handleViewAllServices(context) {
 
 async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
-  const { data: categories } = await supabase.rpc('distinct_service_categories');
+  // Fetch categories directly from services table to avoid RPC errors
+  const { data: servicesData } = await supabase.from('services').select('category');
+  const uniqueCategories = [...new Set((servicesData || []).map(s => s.category).filter(Boolean))];
   
   // User requested interactive buttons (not a popup/list). WhatsApp allows max 3 buttons.
   // We take the top 3 categories.
-  const cats = (categories || []).slice(0, 3);
+  const cats = uniqueCategories.slice(0, 3);
  
   session.stage = 'awaiting_category';
   await saveSession(session);

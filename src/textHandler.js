@@ -56,17 +56,22 @@ async function handleTextMessage(textBody, context) {
       isNewConversationSegment: isNewConversationSegment,
     });
 
-    // Add AI's response to history
-    history.push({ role: 'assistant', content: aiResponse.text });
+    // Add AI's response to history only if text is present
+    if (aiResponse.text) {
+      history.push({ role: 'assistant', content: aiResponse.text });
+    }
 
     // Trim history to save space and tokens
     session.history = history.slice(-MAX_HISTORY_LENGTH);
     await saveSession(session);
 
-    if (aiResponse.buttons && aiResponse.buttons.length > 0) {
-      await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
-    } else {
-      await meta.sendText(waPhone, aiResponse.text);
+    // Only send message if text is present (aiAssistant might have sent a list directly)
+    if (aiResponse.text) {
+      if (aiResponse.buttons && aiResponse.buttons.length > 0) {
+        await meta.sendButtons(waPhone, aiResponse.text, aiResponse.buttons);
+      } else {
+        await meta.sendText(waPhone, aiResponse.text);
+      }
     }
   } catch (error) {
     console.error('Error generating AI reply:', error);

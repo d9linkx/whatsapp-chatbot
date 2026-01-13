@@ -76,7 +76,7 @@ async function generateReply({ phone, userName, history, session, isNewConversat
 
     // Fetch providers for the category in the specified location
     const { data: services, error } = await supabase
-      .from('services, businesses')
+      .from('services')
       .select('*, helpas!inner(*)')
       .eq('category', category)
       .ilike('helpas.state', `%${location}%`) // Assuming 'state' stores the location/city
