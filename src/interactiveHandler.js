@@ -243,10 +243,19 @@ async function handleButtonReply(replyId, context) {
 }
 
 async function handleInteractiveMessage(interactive, context) {
-  if (interactive.type === 'button_reply') {
-    await handleButtonReply(interactive.button_reply.id, context);
-  } else if (interactive.type === 'list_reply') {
-    await handleListReply(interactive.list_reply.id, context);
+  try {
+    if (interactive.type === 'button_reply') {
+      await handleButtonReply(interactive.button_reply.id, context);
+    } else if (interactive.type === 'list_reply') {
+      await handleListReply(interactive.list_reply.id, context);
+    }
+  } catch (error) {
+    console.error('Error handling interactive message:', error);
+    try {
+      await meta.sendText(context.waPhone, "Sorry, something went wrong. Please try again.");
+    } catch (e) {
+      console.error('Failed to send error message:', e.message);
+    }
   }
 }
 

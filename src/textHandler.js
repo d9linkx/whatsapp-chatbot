@@ -13,6 +13,7 @@ const MAX_HISTORY_LENGTH = 6; // Keep the last 3 user/assistant message pairs
 async function handleTextMessage(textBody, context) {
   const { waPhone, name, session, cleanPhone, saveSession, isNewConversationSegment } = context;
 
+  try {
   // Ensure history exists and is an array
   const history = Array.isArray(session.history) ? session.history : [];
 
@@ -52,12 +53,7 @@ async function handleTextMessage(textBody, context) {
 
   // 2. Handle Location Input for Service Search
   if (session.stage === 'awaiting_location') {
-    try {
-      await handleLocationSearch(textBody, context);
-    } catch (error) {
-      console.error('Error in location search:', error);
-      await meta.sendText(waPhone, "Sorry, I encountered an error searching for providers. Please try again or type 'menu' to restart.");
-    }
+    await handleLocationSearch(textBody, context);
     return;
   }
 
@@ -65,7 +61,6 @@ async function handleTextMessage(textBody, context) {
   history.push({ role: 'user', content: textBody });
 
   // For any text message, use the AI assistant to generate a conversational reply.
-  try {
     const aiResponse = await generateReply({
       phone: cleanPhone,
       userName: name,
@@ -92,9 +87,12 @@ async function handleTextMessage(textBody, context) {
       }
     }
   } catch (error) {
-    console.error('Error generating AI reply:', error);
-    // Fallback message if the AI assistant fails
-    await meta.sendText(waPhone, `Sorry, I'm having a little trouble right now. Please try again in a moment.`);
+    console.error('Error in handleTextMessage:', error);
+    try {
+      await meta.sendText(waPhone, `Sorry, I'm having a little trouble right now. Please try again in a moment.`);
+    } catch (sendError) {
+      console.error('Failed to send fallback message (likely Meta API error):', sendError.message);
+    }
   }
 }
 
