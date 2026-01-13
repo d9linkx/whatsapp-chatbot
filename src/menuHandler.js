@@ -66,23 +66,39 @@ async function handleLocationSearch(location, context) {
   const { waPhone, session } = context;
   const category = session.category;
 
-  const { data: services, error } = await supabase
+  const { data: services } = await supabase
     .from('services')
     .select('*, helpas!inner(*)')
     .eq('category', category)
     .ilike('helpas.state', `%${location}%`)
     .limit(5);
 
-  if (error || !services || services.length === 0) {
+  const { data: businesses } = await supabase
+    .from('businesses')
+    .select('*')
+    .eq('category', category)
+    .ilike('state', `%${location}%`)
+    .limit(5);
+
+  const foundServices = services || [];
+  const foundBusinesses = businesses || [];
+
+  if (foundServices.length === 0 && foundBusinesses.length === 0) {
     await meta.sendText(waPhone, `Sorry, I couldn't find any ${category} providers in ${location}. Please try another location.`);
     return;
   }
 
   await meta.sendText(waPhone, `Here are the available ${category} providers in ${location}:`);
-  for (const s of services) {
+  for (const s of foundServices) {
     const provider = s.helpas;
-    const cardText = `*${provider.business_name}*\n${s.description || s.name}\nPrice: ₦${s.price}`;
+    const cardText = `*${provider.business_name || provider.name}*\n${s.description || s.name}\nPrice: ₦${s.price}`;
     const buttons = [{ id: `select_provider:${provider.id}`, title: 'Select' }];
+    await meta.sendButtons(waPhone, cardText, buttons);
+  }
+
+  for (const b of foundBusinesses) {
+    const cardText = `*${b.business_name || b.name}*\n${b.description || 'Service available'}\nPrice: ${b.price ? '₦' + b.price : 'Contact for price'}`;
+    const buttons = [{ id: `select_provider:${b.id}`, title: 'Select' }];
     await meta.sendButtons(waPhone, cardText, buttons);
   }
 }
