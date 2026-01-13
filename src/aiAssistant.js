@@ -33,7 +33,7 @@ async function findHelpaProviders(text) {
   const term = keywords[0];
 
   const { data } = await supabase
-    .from('helpa')
+    .from('helpas')
     .select('*')
     .or(`name.ilike.%${term}%,description.ilike.%${term}%`)
     .limit(3);
