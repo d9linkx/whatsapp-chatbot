@@ -28,10 +28,19 @@ async function handleRequestService(context) {
   session.stage = 'awaiting_category';
   await saveSession(session);
  
-  const introText = `Awesome! To help you find exactly what you need, here are some popular service categories available across Nigeria. If you don't see what you're looking for, no worries, you can always type it in!`;
-  const sections = [{ title: 'Popular Categories', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }];
+  const introText = `Awesome! To help you find exactly what you need, here are some popular services available across Nigeria. If you don't see what you're looking for, no worries, you can always type it in!`;
+  const sections = [{ title: 'Popular Services', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }];
   sections[0].rows.push({ id: 'category:manual', title: 'Type it in the chat' });
-  await meta.sendList(waPhone, 'Find a Service', introText, 'Choose a category', sections);
+
+  sections.push({
+    title: 'Help & Support',
+    rows: [
+      { id: 'option:faq', title: 'FAQs', description: 'Frequently Asked Questions' },
+      { id: 'option:contact_support', title: 'Contact Support', description: 'Talk to our team' }
+    ]
+  });
+
+  await meta.sendList(waPhone, 'Find a Service', introText, 'Choose a service', sections);
 }
 
 async function handleBuyItem(context) {
@@ -128,6 +137,10 @@ async function handleListReply(selectedId, context) {
   } else if (selectedId.startsWith('service:')) {
     const serviceName = selectedId.substring('service:'.length);
     userResponse = `I'd like to request the service: "${serviceName}".`;
+  } else if (selectedId === 'option:faq') {
+    userResponse = 'I have some questions. Can you show me the FAQs?';
+  } else if (selectedId === 'option:contact_support') {
+    userResponse = 'I need to contact support.';
   }
 
   if (userResponse) {
