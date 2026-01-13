@@ -1,6 +1,7 @@
 import { generateReply } from './aiAssistant.js'; // Import AI assistant
 import meta from './metaWhatsapp.js'; // Import meta to send messages
 import { supabase } from './supabaseClient.js';
+import { showMainMenu, handleLocationSearch } from './menuHandler.js';
 
 const MAX_HISTORY_LENGTH = 6; // Keep the last 3 user/assistant message pairs
 
@@ -40,6 +41,18 @@ async function handleTextMessage(textBody, context) {
     } else {
       await meta.sendText(waPhone, '❌ Invalid code. Please check your email and try again.');
     }
+    return;
+  }
+
+  // 1. Handle New Conversation Greeting & Menu
+  if (isNewConversationSegment) {
+    await showMainMenu(context, `Hello ${name || 'Friend'}! Welcome to YourHelpa.`);
+    return;
+  }
+
+  // 2. Handle Location Input for Service Search
+  if (session.stage === 'awaiting_location') {
+    await handleLocationSearch(textBody, context);
     return;
   }
 

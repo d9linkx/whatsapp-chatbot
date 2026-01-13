@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient.js';
 import meta from './metaWhatsapp.js';
 import handleTextMessage from './textHandler.js';
 import { createPaymentLink } from './monnifyClient.js';
+import { handleRequestService, handleSelectCategory, showMainMenu } from './menuHandler.js';
 
 /**
  * Fetches a provider by ID and handles the case where the provider is not found.
@@ -71,34 +72,6 @@ async function handleViewAllServices(context) {
   }];
 
   await meta.sendList(waPhone, 'All Services', 'Here are the services available on YourHelpa:', 'Select a service', sections);
-}
-
-async function handleRequestService(context) {
-  const { waPhone, name, session, saveSession } = context;
-  // Fetch categories directly from services table to avoid RPC errors
-  const { data: servicesData } = await supabase.from('services').select('category');
-  const uniqueCategories = [...new Set((servicesData || []).map(s => s.category).filter(Boolean))];
-  
-  // User requested interactive buttons (not a popup/list). WhatsApp allows max 3 buttons.
-  // We take the top 3 categories.
-  const cats = uniqueCategories.slice(0, 3);
- 
-  session.stage = 'awaiting_category';
-  await saveSession(session);
- 
-  const introText = `What service do you need ${name}?`;
-  
-  const buttons = cats.map(c => ({
-    id: `category:${c}`,
-    title: c
-  }));
-
-  if (buttons.length === 0) {
-    await meta.sendText(waPhone, "No services available at the moment.");
-    return;
-  }
-
-  await meta.sendButtons(waPhone, introText, buttons);
 }
 
 async function handleBuyItem(context) {
@@ -185,16 +158,6 @@ async function handleViewProvider(providerId, context) {
   await meta.sendText(waPhone, detailsMessage);
 }
 
-async function handleSelectCategory(categoryId, context) {
-  const { waPhone, session, saveSession } = context;
-  
-  session.category = categoryId;
-  session.stage = 'awaiting_location';
-  await saveSession(session);
-  
-  await meta.sendText(waPhone, `Where do you want this service delivered? (City in Nigeria)`);
-}
-
 async function handleListReply(selectedId, context) {
   const { waPhone, session, saveSession } = context;
   let userResponse;
@@ -225,6 +188,9 @@ async function handleListReply(selectedId, context) {
     return;
   } else if (selectedId === 'ask_question') {
     await handleAskQuestion(context);
+    return;
+  } else if (selectedId === 'menu') {
+    await showMainMenu(context);
     return;
   }
 
