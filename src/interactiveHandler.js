@@ -76,29 +76,27 @@ async function handleViewAllServices(context) {
 async function handleRequestService(context) {
   const { waPhone, name, session, saveSession } = context;
   const { data: categories } = await supabase.rpc('distinct_service_categories');
-  // Limit categories to 5 to ensure we don't exceed WhatsApp list limits (10 rows total)
-  const cats = (categories || []).slice(0, 5).map(c => ({ id: `cat_${c}`, label: c }));
+  
+  // User requested interactive buttons (not a popup/list). WhatsApp allows max 3 buttons.
+  // We take the top 3 categories.
+  const cats = (categories || []).slice(0, 3);
  
   session.stage = 'awaiting_category';
   await saveSession(session);
  
-  const introText = `Awesome! To help you find exactly what you need, here are some popular services available across Nigeria. If you don't see what you're looking for, no worries, you can always type it in!`;
-  const sections = [
-    { title: 'Browse', rows: [{ id: 'option:all_services', title: 'All Available Services', description: 'View full list' }] },
-    { title: 'Popular Services', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }
-  ];
+  const introText = `What service do you need ${name}?`;
+  
+  const buttons = cats.map(c => ({
+    id: `category:${c}`,
+    title: c
+  }));
 
-  sections[1].rows.push({ id: 'category:manual', title: "Can't find what I'm looking for" });
+  if (buttons.length === 0) {
+    await meta.sendText(waPhone, "No services available at the moment.");
+    return;
+  }
 
-  sections.push({
-    title: 'Help & Support',
-    rows: [
-      { id: 'option:faq', title: 'FAQs', description: 'Frequently Asked Questions' },
-      { id: 'option:contact_support', title: 'Contact Support', description: 'Talk to our team' }
-    ]
-  });
-
-  await meta.sendList(waPhone, 'Find a Service', introText, 'Choose a service', sections);
+  await meta.sendButtons(waPhone, introText, buttons);
 }
 
 async function handleBuyItem(context) {
@@ -185,6 +183,16 @@ async function handleViewProvider(providerId, context) {
   await meta.sendText(waPhone, detailsMessage);
 }
 
+async function handleSelectCategory(categoryId, context) {
+  const { waPhone, session, saveSession } = context;
+  
+  session.category = categoryId;
+  session.stage = 'awaiting_location';
+  await saveSession(session);
+  
+  await meta.sendText(waPhone, `Where do you want this service delivered? (City in Nigeria)`);
+}
+
 async function handleListReply(selectedId, context) {
   const { waPhone, session, saveSession } = context;
   let userResponse;
@@ -197,7 +205,7 @@ async function handleListReply(selectedId, context) {
 
   if (selectedId.startsWith('category:')) {
     const category = selectedId.substring('category:'.length);
-    await handleShowProvidersForService(category, context);
+    await handleSelectCategory(category, context);
     return;
   } else if (selectedId.startsWith('service:')) {
     const serviceName = selectedId.substring('service:'.length);
@@ -210,6 +218,12 @@ async function handleListReply(selectedId, context) {
     userResponse = 'I have some questions. Can you show me the FAQs?';
   } else if (selectedId === 'option:contact_support') {
     userResponse = 'I need to contact support.';
+  } else if (selectedId === 'find_service') {
+    await handleRequestService(context);
+    return;
+  } else if (selectedId === 'ask_question') {
+    await handleAskQuestion(context);
+    return;
   }
 
   if (userResponse) {
@@ -243,6 +257,7 @@ const buttonHandlers = {
 const dynamicButtonHandlers = [
   { prefix: 'select_provider:', handler: handleSelectProvider },
   { prefix: 'view_provider:', handler: handleViewProvider },
+  { prefix: 'category:', handler: (id, ctx) => handleSelectCategory(id, ctx) },
 ];
 
 async function handleButtonReply(replyId, context) {

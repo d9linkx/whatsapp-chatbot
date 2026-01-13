@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { supabase } from './supabaseClient.js';
+import meta from './metaWhatsapp.js';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -47,6 +48,54 @@ async function findHelpaProviders(text) {
  */
 async function generateReply({ phone, userName, history, session, isNewConversationSegment }) {
   const incomingText = history[history.length - 1].content;
+
+  // 1. Greeting & Main Menu
+  if (isNewConversationSegment) {
+    const text = `Hello ${userName || 'Friend'}! Welcome to YourHelpa. How can I assist you today?`;
+    
+    // Display full menu. Using a List because we have 4 options (WhatsApp buttons max limit is 3).
+    const sections = [{
+      title: 'Main Menu',
+      rows: [
+        { id: 'find_service', title: 'Find a Service', description: 'Browse available services' },
+        { id: 'option:faq', title: 'FAQs', description: 'Frequently Asked Questions' },
+        { id: 'option:contact_support', title: 'Contact Support', description: 'Talk to our team' },
+        { id: 'ask_question', title: 'Ask a Question', description: 'Ask AI' }
+      ]
+    }];
+
+    await meta.sendList(phone, 'Menu', text, 'Select Option', sections);
+    // Return null text so the caller doesn't send a duplicate message
+    return { text: null };
+  }
+
+  // 2. Handle Location Input & Show Provider Cards
+  if (session.stage === 'awaiting_location') {
+    const location = incomingText;
+    const category = session.category;
+
+    // Fetch providers for the category in the specified location
+    const { data: services, error } = await supabase
+      .from('services, businesses')
+      .select('*, helpas!inner(*)')
+      .eq('category', category)
+      .ilike('helpas.state', `%${location}%`) // Assuming 'state' stores the location/city
+      .limit(5);
+
+    if (error || !services || services.length === 0) {
+      return { text: `Sorry, I couldn't find any ${category} providers in ${location}. Please try another location or type 'menu' to restart.` };
+    }
+
+    await meta.sendText(phone, `Here are the available ${category} providers in ${location}:`);
+
+    for (const s of services) {
+      const provider = s.helpas;
+      const cardText = `*${provider.business_name}*\n${s.description || s.name}\nPrice: ₦${s.price}`;
+      const buttons = [{ id: `select_provider:${provider.id}`, title: 'Select' }];
+      await meta.sendButtons(phone, cardText, buttons);
+    }
+    return { text: null };
+  }
 
   // If no API key, return a gentle fallback reply with suggestions
   if (!OPENAI_API_KEY) {
