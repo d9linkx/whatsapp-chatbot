@@ -10,7 +10,7 @@ import { createPaymentLink } from './monnifyClient.js';
  * @returns {object|null} The provider data or null if not found.
  */
 async function getProviderById(providerId, context) {
-  const { data: provider, error } = await supabase.from('helpa').select('*').eq('id', providerId).single();
+  const { data: provider, error } = await supabase.from('helpas').select('*').eq('id', providerId).single();
 
   if (error || !provider) {
     console.error('Error fetching provider:', error);
@@ -23,29 +23,29 @@ async function getProviderById(providerId, context) {
 async function handleShowProvidersForService(serviceName, context) {
   const { waPhone } = context;
 
-  const { data: providers, error } = await supabase
-    .from('helpas')
-    .select('*')
-    .ilike('services', `%${serviceName}%`)
+  const { data: services, error } = await supabase
+    .from('services')
+    .select('*, helpas(business_name)')
+    .ilike('name', `%${serviceName}%`)
     .limit(10);
 
   if (error) {
-    console.error('Error fetching providers:', error);
+    console.error('Error fetching services:', error);
     await meta.sendText(waPhone, 'Sorry, I could not fetch providers at the moment.');
     return;
   }
 
-  if (!providers || providers.length === 0) {
+  if (!services || services.length === 0) {
     await meta.sendText(waPhone, `Sorry, no Helpas found for "${serviceName}".`);
     return;
   }
 
   const sections = [{
     title: 'Available Helpas',
-    rows: providers.map(p => ({
-      id: `select_provider:${p.id}`,
-      title: p.name || p.business_name || 'Helpa',
-      description: p.description ? p.description.substring(0, 60) : ''
+    rows: services.map(s => ({
+      id: `select_provider:${s.helpa_id}`,
+      title: s.helpas?.business_name || 'Helpa',
+      description: `₦${s.price} - ${s.description ? s.description.substring(0, 40) : ''}`
     }))
   }];
 
