@@ -56,7 +56,7 @@ async function handleRequestService(context) {
     { title: 'Popular Services', rows: cats.map(c => ({ id: `category:${c.label}`, title: c.label })) }
   ];
 
-  sections[1].rows.push({ id: 'category:manual', title: 'Type it in the chat' });
+  sections[1].rows.push({ id: 'category:manual', title: "Can't find what I'm looking for" });
 
   sections.push({
     title: 'Help & Support',
@@ -156,6 +156,12 @@ async function handleViewProvider(providerId, context) {
 async function handleListReply(selectedId, context) {
   const { waPhone, session, saveSession } = context;
   let userResponse;
+
+  if (selectedId === 'category:manual') {
+    await saveSession({ ...session, stage: 'awaiting_manual_service' });
+    await meta.sendText(waPhone, "No problem. Please type what service you're looking for in the chat.");
+    return;
+  }
 
   if (selectedId.startsWith('category:')) {
     const category = selectedId.substring('category:'.length);
