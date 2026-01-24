@@ -64,7 +64,7 @@ async function handleSuccessfulTransaction(eventData) {
   
   // Notify the Helpa (Provider)
   try {
-    const { data: provider } = await supabase.from('helpa').select('*').eq('id', session.provider_id).single();
+    const { data: provider } = await supabase.from('helpas').select('*').eq('id', session.provider_id).single();
     if (provider) {
       providerName = provider.name;
       providerPhone = provider.phone;

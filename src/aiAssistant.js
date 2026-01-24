@@ -34,9 +34,9 @@ async function findHelpaProviders(text) {
   const term = keywords[0];
 
   const { data } = await supabase
-    .from('helpa')
+    .from('helpas')
     .select('*')
-    .or(`name.ilike.%${term}%,description.ilike.%${term}%`)
+    .or(`business_name.ilike.%${term}%,description.ilike.%${term}%`)
     .limit(3);
 
   return data || [];
@@ -76,7 +76,7 @@ async function generateReply({ phone, userName, history, session, isNewConversat
 
     // Fetch providers for the category in the specified location
     const { data: services, error } = await supabase
-      .from('services, businesses')
+      .from('services')
       .select('*, helpas!inner(*)')
       .eq('category', category)
       .ilike('helpas.state', `%${location}%`) // Assuming 'state' stores the location/city
@@ -109,7 +109,7 @@ async function generateReply({ phone, userName, history, session, isNewConversat
     const providers = await findHelpaProviders(incomingText);
     if (providers.length > 0) {
       foundProviders = providers;
-      providerContext = `\n\n[Available Providers from Database]:\n${providers.map(p => `- ${p.name}: ${p.description} (Price: ${p.price || 'Contact for price'})`).join('\n')}\n\nIf the user is asking for a service or product, ONLY recommend the providers listed above.`;
+      providerContext = `\n\n[Available Providers from Database]:\n${providers.map(p => `- ${p.business_name || p.name}: ${p.description} (Price: ${p.price || 'Contact for price'})`).join('\n')}\n\nIf the user is asking for a service or product, ONLY recommend the providers listed above.`;
     }
   } catch (err) {
     console.error('Error fetching helpa providers:', err);
@@ -148,7 +148,7 @@ Here's how you should chat with users:
       buttons = [ { id: 'confirm_transaction', label: 'Confirm Service' }, { id: 'appeal_transaction', label: 'Appeal' } ];
     } else if (foundProviders.length > 0) {
       // If providers were found, offer buttons to book them immediately
-      buttons = foundProviders.slice(0, 3).map(p => ({ id: `select_provider:${p.id}`, label: `Book ${p.name}`.substring(0, 20) }));
+      buttons = foundProviders.slice(0, 3).map(p => ({ id: `select_provider:${p.id}`, label: `Book ${p.business_name || p.name}`.substring(0, 20) }));
     } else {
       // Otherwise, check if we should show the main menu
       const showButtons = /how can i help|what can i do for you|how can i assist|i'm here to assist|let me know/i.test(aiText || '');

@@ -146,11 +146,11 @@ async function handleSelectProvider(providerId, context) {
   const provider = await getProviderById(providerId, context);
   if (!provider) return;
 
-  const serviceName = session.serviceQuery || 'the requested service';
+  const serviceName = session.serviceQuery || session.category || 'the requested service';
   const price = provider.price;
 
   if (!price || isNaN(parseFloat(price))) {
-    await meta.sendText(waPhone, `*${provider.name}* has been notified. They will contact you shortly to discuss pricing.`);
+    await meta.sendText(waPhone, `*${provider.business_name || provider.name}* has been notified. They will contact you shortly to discuss pricing.`);
     await saveSession({ stage: 'menu' });
     return;
   }
@@ -159,11 +159,11 @@ async function handleSelectProvider(providerId, context) {
     amount: price,
     customerName: userData.full_name,
     customerEmail: userData.email || `${cleanPhone}@chatapp.com`,
-    paymentDescription: `Payment for ${serviceName} by ${provider.name}`,
+    paymentDescription: `Payment for ${serviceName} by ${provider.business_name || provider.name}`,
   };
   const { paymentUrl, reference } = await createPaymentLink(paymentDetails);
 
-  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.name}* for *₦${price}*, please complete the payment below.`);
+  await meta.sendText(waPhone, `Great! To confirm your booking for *${serviceName}* with *${provider.business_name || provider.name}* for *₦${price}*, please complete the payment below.`);
   await meta.sendText(waPhone, paymentUrl);
 
   session.stage = 'awaiting_payment';
@@ -179,7 +179,7 @@ async function handleViewProvider(providerId, context) {
   const provider = await getProviderById(providerId, context);
   if (!provider) return;
 
-  let detailsMessage = `*More Details for ${provider.name}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
+  let detailsMessage = `*More Details for ${provider.business_name || provider.name}*\n\n*Description:* ${provider.description || 'N/A'}\n*Price:* ${provider.price || 'Contact for price'}`;
   await meta.sendText(waPhone, detailsMessage);
 }
 

@@ -20,7 +20,7 @@ async function handleNewUser(context, textBody) {
 
   if (error) {
     console.error('Error creating new user:', error);
-    await meta.sendTextMessage(context.waPhone, 'Sorry, there was an error setting up your account. Please try again in a moment.');
+    await meta.sendText(context.waPhone, 'Sorry, there was an error setting up your account. Please try again in a moment.');
     return;
   }
 
