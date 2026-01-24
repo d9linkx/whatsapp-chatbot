@@ -66,7 +66,7 @@ async function handleSuccessfulTransaction(eventData) {
   try {
     const { data: provider } = await supabase.from('helpas').select('*').eq('id', session.provider_id).single();
     if (provider) {
-      providerName = provider.name;
+      providerName = provider.business_name || provider.name;
       providerPhone = provider.phone;
       if (provider.phone) {
         await meta.sendText(provider.phone, `🔔 New Booking Alert!\n\nUser: ${userData.full_name}\nService: ${session.serviceName}\nAmount Paid: ₦${amountPaid}\n\nPlease contact the customer at +${cleanPhone} to arrange delivery.`);
