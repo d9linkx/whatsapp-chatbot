@@ -46,7 +46,7 @@ async function handleRequestService(context) {
     await saveSession(session);
   
     const introText = `What service do you need ${name}?`;
-    const buttons = cats.map(c => ({ id: `category:${c}`, title: c }));
+    const buttons = cats.map(c => ({ id: `category:${c}`, label: c.substring(0, 20) }));
 
     if (buttons.length === 0) {
       await meta.sendText(waPhone, "No services available at the moment.");
@@ -105,7 +105,7 @@ async function handleLocationSearch(location, context) {
     const desc = (s.description || s.name || '').substring(0, 100);
     const price = s.price ? `₦${s.price}` : 'Contact for price';
     const cardText = `*${provider.business_name || provider.name}*\n${desc}\nPrice: ${price}`;
-    const buttons = [{ id: `select_provider:${provider.id}`, title: 'Select' }];
+    const buttons = [{ id: `select_provider:${provider.id}`, label: 'Select' }];
     await meta.sendButtons(waPhone, cardText, buttons);
   }
 
@@ -113,7 +113,7 @@ async function handleLocationSearch(location, context) {
     const desc = (b.description || 'Service available').substring(0, 100);
     const price = b.price ? `₦${b.price}` : 'Contact for price';
     const cardText = `*${b.business_name || b.name}*\n${desc}\nPrice: ${price}`;
-    const buttons = [{ id: `select_provider:${b.id}`, title: 'Select' }];
+    const buttons = [{ id: `select_provider:${b.id}`, label: 'Select' }];
     await meta.sendButtons(waPhone, cardText, buttons);
   }
 }

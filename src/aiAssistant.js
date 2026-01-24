@@ -91,7 +91,7 @@ async function generateReply({ phone, userName, history, session, isNewConversat
     for (const s of services) {
       const provider = s.helpas;
       const cardText = `*${provider.business_name}*\n${s.description || s.name}\nPrice: ₦${s.price}`;
-      const buttons = [{ id: `select_provider:${provider.id}`, title: 'Select' }];
+      const buttons = [{ id: `select_provider:${provider.id}`, label: 'Select' }];
       await meta.sendButtons(phone, cardText, buttons);
     }
     return { text: null };

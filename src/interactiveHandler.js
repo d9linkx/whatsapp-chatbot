@@ -88,7 +88,7 @@ async function handleRequestService(context) {
   
   const buttons = cats.map(c => ({
     id: `category:${c}`,
-    title: c
+    label: c.substring(0, 20)
   }));
 
   if (buttons.length === 0) {
